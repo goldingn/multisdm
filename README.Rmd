@@ -30,6 +30,10 @@ install.packages("greta")
 
 ### Example data
 
+```{r seed, echo=FALSE}
+set.seed(2023-11-08)
+```
+
 Using code from `?multispeciesPP::multispeciesPP`:
 
 ```{r data}
@@ -135,9 +139,9 @@ pa <- 1 * (pa.count > 0)
 penalty.l2.sdm <- penalty.l2.bias <- 0.1
 penalty.l2.intercept <- 1e-4
 
-intercept_sd <- 1 / penalty.l2.intercept
-beta_sd <- 1 / penalty.l2.sdm
-delta_sd <- 1 / penalty.l2.bias
+intercept_sd <- sqrt(1 / penalty.l2.intercept)
+beta_sd <- sqrt(1 / penalty.l2.sdm)
+delta_sd <- sqrt(1 / penalty.l2.bias)
 
 # intercept and shared slope for selection bias
 gamma <- normal(0, intercept_sd, dim = n_species)
@@ -151,8 +155,9 @@ beta <- normal(0, beta_sd, dim = c(n_cov_abund, n_species))
 log_lambda <- sweep(x %*% beta, 2, alpha, FUN = "+")
 # can easily replace this model with something more interesting, like a low-rank GP on covariate space or something mechanistic
 
-# (get outer product of vector of shared bias across pixels and vector of intercepts across species)
-log_bias <- (z %*% delta) %*% t(gamma)
+# bias across pixels (shared coefficient) and species (different intercepts)
+log_bias_coef <- sweep(zeros(n.pixel, n_species), 1, z %*% delta, FUN = "+")
+log_bias <- sweep(log_bias_coef, 2, gamma, FUN = "+")
 
 # rates across all sites and species
 lambda <- exp(log_lambda)
@@ -171,11 +176,12 @@ area_po <- 1
 po_rate <- exp(log_lambda + log_bias + log(area_po))
 distribution(po.count) <- poisson(po_rate)
 
-# deifne and fit the model
+# define and fit the model by MAP and MCMC
 m <- model(alpha, beta, gamma, delta)
+map <- opt(m, optimiser = adam(), max_iterations = 500)
 draws <- mcmc(m)
 ```
-check greta has converged for all parameters
+check greta MCMC has converged for all parameters
 ```{r greta-convergence}
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)
 max(r_hats$psrf[, 2])
@@ -191,29 +197,35 @@ truth <- rbind(true_parameters$alpha, true_parameters$beta)
 multispeciesPP_estimates <- c(full.mod$species.coef[1:3,])
 
 # greta estimates and uncertainty
+greta_map_estimates <- with(map$par, c(rbind(t(alpha), beta)))
 greta_sims <- calculate(rbind(t(alpha), beta),
                              values = draws,
                              nsim = 1000)[[1]]
-greta_estimates <- c(apply(greta_sims, 2:3, mean))
-greta_upper <- c(apply(greta_sims, 2:3, quantile, 0.975))
-greta_lower <- c(apply(greta_sims, 2:3, quantile, 0.025))
+greta_mcmc_estimates <- c(apply(greta_sims, 2:3, mean))
+greta_mcmc_upper <- c(apply(greta_sims, 2:3, quantile, 0.975))
+greta_mcmc_lower <- c(apply(greta_sims, 2:3, quantile, 0.025))
 
-par(mfrow = c(1, 2))
+par(mfrow = c(3, 1), asp = 1)
 plot(truth, multispeciesPP_estimates,
      xlab = "true coefficients",
-     ylab = "multispeciesPP coefficients")
+     ylab = "estimates",
+     main = "multispeciesPP")
+abline(0,1)
+plot(truth, greta_map_estimates,
+     xlab = "true coefficients",
+     ylab = "estimates",
+     main = "greta MAP")
 abline(0,1)
 
-plot(truth, greta_estimates,
+plot(truth, greta_mcmc_estimates,
      xlab = "true coefficients",
-     ylab = "greta coefficients")
+     ylab = "estimates",
+     main = "greta MCMC")
 arrows(x0 = truth,
        x1 = truth,
-       y0 = greta_lower,
-       y1 = greta_upper,
+       y0 = greta_mcmc_lower,
+       y1 = greta_mcmc_upper,
        length = 0)
 abline(0,1)
-# add error bars
-
 ```
 

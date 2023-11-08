@@ -154,9 +154,9 @@ pa <- 1 * (pa.count > 0)
 penalty.l2.sdm <- penalty.l2.bias <- 0.1
 penalty.l2.intercept <- 1e-4
 
-intercept_sd <- 1 / penalty.l2.intercept
-beta_sd <- 1 / penalty.l2.sdm
-delta_sd <- 1 / penalty.l2.bias
+intercept_sd <- sqrt(1 / penalty.l2.intercept)
+beta_sd <- sqrt(1 / penalty.l2.sdm)
+delta_sd <- sqrt(1 / penalty.l2.bias)
 
 # intercept and shared slope for selection bias
 gamma <- normal(0, intercept_sd, dim = n_species)
@@ -172,8 +172,9 @@ beta <- normal(0, beta_sd, dim = c(n_cov_abund, n_species))
 log_lambda <- sweep(x %*% beta, 2, alpha, FUN = "+")
 # can easily replace this model with something more interesting, like a low-rank GP on covariate space or something mechanistic
 
-# (get outer product of vector of shared bias across pixels and vector of intercepts across species)
-log_bias <- (z %*% delta) %*% t(gamma)
+# bias across pixels (shared coefficient) and species (different intercepts)
+log_bias_coef <- sweep(zeros(n.pixel, n_species), 1, z %*% delta, FUN = "+")
+log_bias <- sweep(log_bias_coef, 2, gamma, FUN = "+")
 
 # rates across all sites and species
 lambda <- exp(log_lambda)
@@ -192,20 +193,21 @@ area_po <- 1
 po_rate <- exp(log_lambda + log_bias + log(area_po))
 distribution(po.count) <- poisson(po_rate)
 
-# deifne and fit the model
+# define and fit the model by MAP and MCMC
 m <- model(alpha, beta, gamma, delta)
+map <- opt(m, optimiser = adam(), max_iterations = 500)
 draws <- mcmc(m)
 #> running 4 chains simultaneously on up to 8 CPU cores
-#>     warmup                                           0/1000 | eta:  ?s              warmup ==                                       50/1000 | eta: 49s | 12% bad    warmup ====                                    100/1000 | eta: 38s | 11% bad    warmup ======                                  150/1000 | eta: 33s | 31% bad    warmup ========                                200/1000 | eta: 31s | 36% bad    warmup ==========                              250/1000 | eta: 28s | 42% bad    warmup ===========                             300/1000 | eta: 26s | 44% bad    warmup =============                           350/1000 | eta: 24s | 48% bad    warmup ===============                         400/1000 | eta: 22s | 49% bad    warmup =================                       450/1000 | eta: 20s | 48% bad    warmup ===================                     500/1000 | eta: 18s | 44% bad    warmup =====================                   550/1000 | eta: 17s | 40% bad    warmup =======================                 600/1000 | eta: 15s | 37% bad    warmup =========================               650/1000 | eta: 13s | 35% bad    warmup ===========================             700/1000 | eta: 11s | 32% bad    warmup ============================            750/1000 | eta:  9s | 31% bad    warmup ==============================          800/1000 | eta:  7s | 29% bad    warmup ================================        850/1000 | eta:  5s | 28% bad    warmup ==================================      900/1000 | eta:  4s | 26% bad    warmup ====================================    950/1000 | eta:  2s | 25% bad    warmup ====================================== 1000/1000 | eta:  0s | 24% bad
-#>   sampling                                           0/1000 | eta:  ?s            sampling ==                                       50/1000 | eta: 46s | 99% bad  sampling ====                                    100/1000 | eta: 37s | 96% bad  sampling ======                                  150/1000 | eta: 38s | 97% bad  sampling ========                                200/1000 | eta: 34s | 97% bad  sampling ==========                              250/1000 | eta: 33s | 97% bad  sampling ===========                             300/1000 | eta: 30s | 97% bad  sampling =============                           350/1000 | eta: 26s | 94% bad  sampling ===============                         400/1000 | eta: 26s | 95% bad  sampling =================                       450/1000 | eta: 24s | 96% bad  sampling ===================                     500/1000 | eta: 23s | 96% bad  sampling =====================                   550/1000 | eta: 20s | 95% bad  sampling =======================                 600/1000 | eta: 17s | 94% bad  sampling =========================               650/1000 | eta: 15s | 93% bad  sampling ===========================             700/1000 | eta: 12s | 92% bad  sampling ============================            750/1000 | eta: 10s | 93% bad  sampling ==============================          800/1000 | eta:  8s | 93% bad  sampling ================================        850/1000 | eta:  6s | 93% bad  sampling ==================================      900/1000 | eta:  4s | 94% bad  sampling ====================================    950/1000 | eta:  2s | 94% bad  sampling ====================================== 1000/1000 | eta:  0s | 94% bad
+#>     warmup                                           0/1000 | eta:  ?s              warmup ==                                       50/1000 | eta:  1m              warmup ====                                    100/1000 | eta: 42s              warmup ======                                  150/1000 | eta: 37s              warmup ========                                200/1000 | eta: 35s              warmup ==========                              250/1000 | eta: 32s              warmup ===========                             300/1000 | eta: 29s              warmup =============                           350/1000 | eta: 27s              warmup ===============                         400/1000 | eta: 25s              warmup =================                       450/1000 | eta: 23s | 3% bad     warmup ===================                     500/1000 | eta: 20s | 3% bad     warmup =====================                   550/1000 | eta: 18s | 3% bad     warmup =======================                 600/1000 | eta: 16s | 2% bad     warmup =========================               650/1000 | eta: 14s | 2% bad     warmup ===========================             700/1000 | eta: 12s | 2% bad     warmup ============================            750/1000 | eta: 10s | 2% bad     warmup ==============================          800/1000 | eta:  8s | 2% bad     warmup ================================        850/1000 | eta:  6s | 2% bad     warmup ==================================      900/1000 | eta:  4s | 2% bad     warmup ====================================    950/1000 | eta:  2s | 2% bad     warmup ====================================== 1000/1000 | eta:  0s | 1% bad 
+#>   sampling                                           0/1000 | eta:  ?s            sampling ==                                       50/1000 | eta:  1m            sampling ====                                    100/1000 | eta: 37s            sampling ======                                  150/1000 | eta: 34s            sampling ========                                200/1000 | eta: 33s            sampling ==========                              250/1000 | eta: 33s            sampling ===========                             300/1000 | eta: 30s            sampling =============                           350/1000 | eta: 29s            sampling ===============                         400/1000 | eta: 26s            sampling =================                       450/1000 | eta: 23s            sampling ===================                     500/1000 | eta: 22s            sampling =====================                   550/1000 | eta: 20s            sampling =======================                 600/1000 | eta: 18s            sampling =========================               650/1000 | eta: 15s            sampling ===========================             700/1000 | eta: 13s            sampling ============================            750/1000 | eta: 11s            sampling ==============================          800/1000 | eta:  9s            sampling ================================        850/1000 | eta:  7s            sampling ==================================      900/1000 | eta:  4s            sampling ====================================    950/1000 | eta:  2s            sampling ====================================== 1000/1000 | eta:  0s
 ```
 
-check greta has converged for all parameters
+check greta MCMC has converged for all parameters
 
 ``` r
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)
 max(r_hats$psrf[, 2])
-#> [1] 1190.426
+#> [1] 1.041404
 ```
 
 ### Visualising parameter estimates
@@ -218,32 +220,37 @@ truth <- rbind(true_parameters$alpha, true_parameters$beta)
 multispeciesPP_estimates <- c(full.mod$species.coef[1:3,])
 
 # greta estimates and uncertainty
+greta_map_estimates <- with(map$par, c(rbind(t(alpha), beta)))
 greta_sims <- calculate(rbind(t(alpha), beta),
                              values = draws,
                              nsim = 1000)[[1]]
-greta_estimates <- c(apply(greta_sims, 2:3, mean))
-greta_upper <- c(apply(greta_sims, 2:3, quantile, 0.975))
-greta_lower <- c(apply(greta_sims, 2:3, quantile, 0.025))
+greta_mcmc_estimates <- c(apply(greta_sims, 2:3, mean))
+greta_mcmc_upper <- c(apply(greta_sims, 2:3, quantile, 0.975))
+greta_mcmc_lower <- c(apply(greta_sims, 2:3, quantile, 0.025))
 
-par(mfrow = c(1, 2))
+par(mfrow = c(3, 1), asp = 1)
+#> Warning in par(mfrow = c(3, 1), asp = 1): "asp" is not a graphical parameter
 plot(truth, multispeciesPP_estimates,
      xlab = "true coefficients",
-     ylab = "multispeciesPP coefficients")
+     ylab = "estimates",
+     main = "multispeciesPP")
+abline(0,1)
+plot(truth, greta_map_estimates,
+     xlab = "true coefficients",
+     ylab = "estimates",
+     main = "greta MAP")
 abline(0,1)
 
-plot(truth, greta_estimates,
+plot(truth, greta_mcmc_estimates,
      xlab = "true coefficients",
-     ylab = "greta coefficients")
+     ylab = "estimates",
+     main = "greta MCMC")
 arrows(x0 = truth,
        x1 = truth,
-       y0 = greta_lower,
-       y1 = greta_upper,
+       y0 = greta_mcmc_lower,
+       y1 = greta_mcmc_upper,
        length = 0)
 abline(0,1)
 ```
 
 ![](README_files/figure-gfm/estimates-1.png)<!-- -->
-
-``` r
-# add error bars
-```
